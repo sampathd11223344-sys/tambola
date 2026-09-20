@@ -1,0 +1,31 @@
+name: tambola_board
+description: >-
+  Tambola / Housie board and number generator for phones and tablets.
+  Landscape-first, 9x10 board, text-to-speech calling, auto-play,
+  history and a custom 2-call "Delayed Call Queue".
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # Text to speech (number announcements).
+  flutter_tts: ^4.2.0
+  # Share / copy the generated history.
+  share_plus: ^10.1.4
+  # Keep the screen awake while Auto mode is running.
+  wakelock_plus: ^1.2.10
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  fake_async: ^1.3.1
+
+flutter:
+  uses-material-design: true

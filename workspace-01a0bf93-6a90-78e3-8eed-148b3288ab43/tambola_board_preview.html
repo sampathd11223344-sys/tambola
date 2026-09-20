@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tambola / Housie Board — Live Preview</title>
+<style>
+  :root{
+    --bg:#f1f4ee;
+    --tile:#a3da7d;
+    --tile-ink:#1b2412;
+    --called:#e23b3b;
+    --queued:#ffc53d;
+    --queued-border:#f09c00;
+    --queued-ready:#ff9f1c;
+    --queued-ready-border:#d9660a;
+    --btn:#a9e28c;
+    --btn-disabled:#d4dcd0;
+    --ink:#1b2412;
+    --ink-muted:#66705d;
+    --accent:#2e7d32;
+    --circle:#c4e7a6;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    user-select:none;
+  }
+  .app{position:fixed;inset:0;display:flex;gap:12px;padding:10px}
+
+  /* ------------------------------------------------------------------ board */
+  .board{
+    flex:1 1 auto;min-width:0;display:grid;
+    grid-template-columns:repeat(10,1fr);
+    grid-template-rows:repeat(9,1fr);
+    gap:8px;
+  }
+  .tile{
+    position:relative;border:2px solid transparent;border-radius:var(--radius);
+    background:var(--tile);color:var(--tile-ink);
+    font-weight:800;font-size:clamp(13px,2.9vh,30px);line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:background .13s ease,border-color .13s ease,transform .08s ease;
+    font-variant-numeric:tabular-nums;
+  }
+  .tile:active{transform:scale(.96)}
+  .tile.called{background:var(--called);color:#fff;cursor:pointer}
+  /* Discreet mode: a 5px dot that only ever appears while a MOUSE hovers a
+     queued tile. Touch devices never render it, so the room sees nothing. */
+  .tile.q::after{
+    content:"";position:absolute;left:6px;bottom:6px;width:5px;height:5px;border-radius:50%;
+    background:rgba(27,36,18,.45);opacity:0;transition:opacity .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine){ .tile.q:hover::after{opacity:1} }
+  .tile.latest{background:var(--called);color:#fff;border-color:#101010;border-width:3px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+  .tile.queued{background:var(--queued);border-color:var(--queued-border);color:var(--ink)}
+  .tile.ready{background:var(--queued-ready);border-color:var(--queued-ready-border);color:var(--ink)}
+  .badge{
+    position:absolute;top:3px;right:3px;padding:1px 4px;border-radius:6px;
+    font-size:clamp(6px,.95vh,10px);font-weight:900;letter-spacing:.3px;line-height:1.35;
+    background:#fff;color:var(--queued-ready-border);border:1px solid var(--queued-ready-border);
+  }
+  .badge.ready{background:var(--called);color:#fff;border-color:#fff}
+
+  /* ------------------------------------------------------------------ panel */
+  .panel{
+    flex:0 0 auto;width:clamp(190px,22vw,330px);
+    display:flex;flex-direction:column;gap:clamp(5px,.9vh,11px);min-height:0;
+  }
+  .row{display:flex;gap:clamp(5px,.9vh,11px)}
+  .pill{
+    flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;
+    background:#fff;border:1px solid rgba(46,125,50,.55);border-radius:10px;
+    color:var(--accent);font-weight:700;font-size:clamp(10px,2.05vh,16px);
+    padding:0 8px;cursor:pointer;white-space:nowrap;overflow:hidden;
+    height:clamp(26px,6.6vh,46px);
+    transition:background .12s ease;
+  }
+  .pill .txt{overflow:hidden;text-overflow:ellipsis}
+  .pill.active{background:var(--btn);border-color:var(--accent);color:var(--ink)}
+  .pill:hover{background:#f3f8f0}
+  .pill.active:hover{background:#9ddc7c}
+  .switch{display:flex;align-items:center;gap:6px;color:var(--ink)}
+  .switch .track{
+    width:44px;height:26px;border-radius:13px;background:#2e7d32;position:relative;
+    transition:background .15s ease;flex:0 0 auto;cursor:pointer;
+  }
+  .switch .thumb{
+    position:absolute;top:3px;left:21px;width:20px;height:20px;border-radius:50%;
+    background:#13a89e;transition:left .15s ease,background .15s ease;
+  }
+  .switch.off .track{background:#bdbdbd}
+  .switch.off .thumb{left:3px;background:#f5f5f5}
+  .icon-btn{
+    flex:0 0 auto;width:clamp(30px,7vh,46px);height:clamp(30px,7vh,46px);
+    display:flex;align-items:center;justify-content:center;
+    background:#fff;border:1px solid rgba(46,125,50,.35);border-radius:10px;cursor:pointer;
+  }
+  .icon-btn svg{width:52%;height:52%}
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--btn);border-radius:12px;border:none;color:var(--ink);
+    font-weight:800;font-size:clamp(12px,2.6vh,19px);cursor:pointer;width:100%;
+    transition:filter .12s ease,transform .08s ease;
+  }
+  .btn:hover{filter:brightness(.96)}
+  .btn:active{transform:scale(.985)}
+  .btn[disabled]{background:var(--btn-disabled);color:var(--ink-muted);cursor:not-allowed}
+  .btn.primary{box-shadow:inset 0 0 0 1.5px rgba(46,125,50,.55)}
+  .btn.reset{flex:0 0 8.5%}
+  .btn.generate{flex:0 0 11.5%}
+  .btn.history{flex:0 0 11.5%}
+
+  /* current number */
+  .current-wrap{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+  .current{
+    border-radius:50%;background:var(--circle);border:2px solid rgba(46,125,50,.35);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    cursor:pointer;
+  }
+  .current .label{font-size:clamp(6px,1.15vh,11px);letter-spacing:1.4px;font-weight:800;color:var(--ink-muted)}
+  .current .value{font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+  .current .sub{font-size:clamp(6px,1.15vh,11px);font-weight:700;color:var(--ink-muted);white-space:nowrap}
+
+  /* ------------------------------------------------------------------ misc */
+  .fps{
+    position:fixed;left:0;bottom:14px;background:rgba(70,70,70,.9);color:#fff;
+    font-size:11px;line-height:1.15;padding:3px 8px;border-radius:0 4px 4px 0;
+    display:flex;flex-direction:column;align-items:center;pointer-events:none;z-index:5;
+  }
+  .fps b{font-size:13px}
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translate(-50%,20px);
+    background:rgba(27,36,18,.92);color:#fff;padding:9px 16px;border-radius:10px;
+    font-size:13px;font-weight:600;opacity:0;transition:opacity .2s ease,transform .2s ease;
+    pointer-events:none;z-index:60;max-width:70vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;
+    align-items:center;justify-content:center;z-index:80;padding:16px;
+  }
+  .backdrop.show{display:flex}
+  .modal{
+    background:#fff;border-radius:6px;padding:18px 22px;width:min(760px,96vw);
+    max-height:88vh;display:flex;flex-direction:column;gap:12px;
+    box-shadow:0 18px 50px rgba(0,0,0,.28);
+  }
+  .modal h2{margin:0;font-size:20px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline}
+  .modal h2 span{font-size:12.5px;color:var(--ink-muted);font-weight:700}
+  .modal .body{
+    overflow:auto;font-size:16px;line-height:1.5;font-weight:700;
+    background:#f7faf5;border-radius:10px;padding:12px 14px;min-height:64px;
+    word-break:break-word;user-select:text;
+  }
+  .modal .actions{display:flex;gap:10px}
+  .modal .actions .ghost{
+    flex:1 1 30%;background:#fff;border:1px solid rgba(46,125,50,.6);color:var(--accent);
+    border-radius:10px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;
+  }
+  .modal .actions .solid{
+    flex:2 1 60%;background:var(--btn);border:none;border-radius:10px;padding:12px;
+    font-weight:800;font-size:15px;cursor:pointer;color:var(--ink);
+  }
+  .modal.small{width:min(430px,94vw)}
+  .modal.small p{margin:0;font-size:14.5px;line-height:1.4;color:#333}
+  .menu{
+    position:fixed;background:#fff;border-radius:10px;padding:6px;display:none;z-index:90;
+    box-shadow:0 10px 32px rgba(0,0,0,.22);min-width:140px;
+  }
+  .menu.show{display:block}
+  .menu button{
+    display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;
+    padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px;font-weight:600;
+    color:var(--ink);text-align:left;
+  }
+  .menu button:hover{background:#eef5e9}
+  .menu button .dot{width:9px;height:9px;border-radius:50%;border:2px solid var(--accent)}
+  .menu button.sel .dot{background:var(--accent)}
+  .hint{
+    position:fixed;left:46px;bottom:16px;font-size:10.5px;color:#8b9484;z-index:4;
+    pointer-events:none;line-height:1.4;opacity:.8;
+  }
+
+  /* ------------------------------------------- portrait / narrow fallback */
+  @media (max-aspect-ratio: 5/4) {
+    .app{flex-direction:column;gap:8px}
+    .board{flex:1 1 auto;min-height:0}
+    .panel{width:100%;height:34%;flex-direction:row;gap:6px;align-items:stretch}
+    .panel .row{flex:1 1 0;flex-direction:column;gap:6px;justify-content:space-between;min-width:0}
+    .panel .row .pill{flex:1 1 auto;height:auto;min-height:0}
+    .switch{flex:1 1 auto;justify-content:center}
+    .switch .track{width:36px;height:22px}
+    .switch .thumb{width:16px;height:16px;top:3px;left:17px}
+    .switch.off .thumb{left:3px}
+    .icon-btn{width:100%;flex:1 1 auto}
+    .btn.reset,.btn.generate,.btn.history{flex:1.15 1 0;height:auto;min-height:0}
+    .btn{font-size:clamp(10px,1.9vh,16px);padding:4px}
+    .current-wrap{flex:1.2 1 0;padding:0 2px}
+    .hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="board" id="board"></div>
+
+  <div class="panel">
+    <div class="row">
+      <button class="pill" id="voicePill"><span class="txt" id="voiceLabel">Voice English</span> ⌄</button>
+      <div class="switch" id="muteSwitch" title="Mute / unmute the announcer">
+        <div class="track"><div class="thumb"></div></div>
+      </div>
+      <div class="icon-btn" id="shareBtn" title="Share the called numbers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1b2412" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M5 13v5a2 2 0 002 2h10a2 2 0 002-2v-5"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="pill" id="autoPill">▶ <span class="txt">Auto [Pro]</span></button>
+      <button class="pill" id="speedPill"><span class="txt" id="speedLabel">Speed 3s</span></button>
+    </div>
+
+    <button class="btn reset" id="resetBtn">Reset</button>
+
+    <div class="current-wrap">
+      <div class="current" id="current" title="Tap to repeat the call">
+        <div class="label">CURRENT</div>
+        <div class="value" id="currentValue">--</div>
+        <div class="sub" id="currentSub">0 called • 90 left</div>
+      </div>
+    </div>
+
+    <button class="btn generate primary" id="generateBtn">Generate</button>
+    <button class="btn history" id="historyBtn">History</button>
+  </div>
+</div>
+
+<div class="menu" id="menu"></div>
+
+<div class="backdrop" id="historyBackdrop">
+  <div class="modal">
+    <h2>Generated History <span id="historyCount">0 / 90</span></h2>
+    <div class="body" id="historyBody">No numbers called yet.</div>
+    <div class="actions">
+      <button class="ghost" id="historyShare">Share</button>
+      <button class="solid" id="historyClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="resetBackdrop">
+  <div class="modal small">
+    <h2>Start a new game?</h2>
+    <p id="resetBody">This clears the called numbers, the queue, the history and the current call.</p>
+    <div class="actions">
+      <button class="ghost" id="resetCancel">Cancel</button>
+      <button class="solid" id="resetConfirm">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="fps"><span>FPS</span><b id="fpsValue">0</b></div>
+<div class="hint">Space = Generate · A = Auto · R = Reset · H = History · F = FPS</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TOTAL = 90;
+  var QUEUE_DELAY = 2;
+
+  var LANGUAGES = [
+    { label: "English", lang: "en-IN", word: "Number" },
+    { label: "हिन्दी",  lang: "hi-IN", word: "नंबर" },
+    { label: "తెలుగు",  lang: "te-IN", word: "నంబర్" },
+    { label: "தமிழ்",   lang: "ta-IN", word: "எண்" },
+    { label: "ಕನ್ನಡ",   lang: "kn-IN", word: "ಸಂಖ್ಯೆ" },
+    { label: "मराठी",   lang: "mr-IN", word: "नंबर" }
+  ];
+  var SPEEDS = [1, 2, 3, 5];
+
+  var state = {
+    // DISCREET (default): queued numbers are never drawn on the board, so the
+    // upcoming number is known only to the caller. Press "Q" to reveal the
+    // amber markers for comparison.
+    showQueueHints: false,
+    called: new Set(),
+    history: [],
+    queue: new Map(),   // number -> remaining delay (Map keeps insertion order)
+    current: null,
+    auto: false,
+    speed: 3,
+    muted: false,
+    language: LANGUAGES[0],
+    timer: null
+  };
+
+  var els = {
+    board: document.getElementById("board"),
+    voicePill: document.getElementById("voicePill"),
+    voiceLabel: document.getElementById("voiceLabel"),
+    muteSwitch: document.getElementById("muteSwitch"),
+    shareBtn: document.getElementById("shareBtn"),
+    autoPill: document.getElementById("autoPill"),
+    speedPill: document.getElementById("speedPill"),
+    speedLabel: document.getElementById("speedLabel"),
+    resetBtn: document.getElementById("resetBtn"),
+    current: document.getElementById("current"),
+    currentValue: document.getElementById("currentValue"),
+    currentSub: document.getElementById("currentSub"),
+    generateBtn: document.getElementById("generateBtn"),
+    historyBtn: document.getElementById("historyBtn"),
+    historyBackdrop: document.getElementById("historyBackdrop"),
+    historyBody: document.getElementById("historyBody"),
+    historyCount: document.getElementById("historyCount"),
+    historyClose: document.getElementById("historyClose"),
+    historyShare: document.getElementById("historyShare"),
+    resetBackdrop: document.getElementById("resetBackdrop"),
+    resetBody: document.getElementById("resetBody"),
+    resetCancel: document.getElementById("resetCancel"),
+    resetConfirm: document.getElementById("resetConfirm"),
+    menu: document.getElementById("menu"),
+    toast: document.getElementById("toast"),
+    fpsValue: document.getElementById("fpsValue")
+  };
+
+  var tiles = [];
+
+  /* ------------------------------------------------------------ build board */
+  function buildBoard() {
+    var fragment = document.createDocumentFragment();
+    for (var n = 1; n <= TOTAL; n++) {
+      var tile = document.createElement("button");
+      tile.className = "tile";
+      tile.type = "button";
+      tile.dataset.n = String(n);
+      tile.textContent = String(n);
+      tile.setAttribute("aria-label", "Number " + n + ", not called");
+      tile.addEventListener("click", onTileClick);
+      tiles.push(tile);
+      fragment.appendChild(tile);
+    }
+    els.board.appendChild(fragment);
+  }
+
+  /* ------------------------------------------------------------------- state */
+  function stateOf(n) {
+    if (state.current === n) return "latest";
+    if (state.called.has(n)) return "called";
+    // Discreet mode: a queued number is reported as a plain uncalled number.
+    if (state.queue.has(n) && state.showQueueHints) {
+      return state.queue.get(n) <= 0 ? "ready" : "queued";
+    }
+    return "uncalled";
+  }
+
+  function isQueued(n) { return state.queue.has(n); }
+
+  function onTileClick(event) {
+    var n = Number(event.currentTarget.dataset.n);
+    if (state.called.has(n)) { toast("Number " + n + " was already called."); return; }
+
+    if (state.queue.has(n)) {
+      state.queue.delete(n);
+      // Nothing is announced in discreet mode - the board must stay neutral.
+      if (state.showQueueHints) toast("Number " + n + " removed from the queue.");
+      render();
+      return;
+    }
+
+    state.queue.set(n, QUEUE_DELAY);
+    if (state.showQueueHints) {
+      toast("Number " + n + " queued — called after " + QUEUE_DELAY + " more numbers.");
+    }
+    render();
+  }
+
+  /* ------------------------------------------------- generate / call numbers */
+  function pickNext() {
+    // Step A: a queued number whose delay already reached 0 wins.
+    var ready = null;
+    state.queue.forEach(function (delay, n) { if (ready === null && delay <= 0) ready = n; });
+    if (ready !== null) return ready;
+
+    // Otherwise random among uncalled numbers that are not queued.
+    var pool = [], fallback = [];
+    for (var n = 1; n <= TOTAL; n++) {
+      if (state.called.has(n)) continue;
+      if (state.queue.has(n)) fallback.push(n); else pool.push(n);
+    }
+    var source = pool.length ? pool : fallback;
+    return source[Math.floor(Math.random() * source.length)];
+  }
+
+  function generate() {
+    if (state.called.size >= TOTAL) return null;
+
+    var chosen = pickNext();
+    state.queue.delete(chosen);
+    state.called.add(chosen);
+    state.current = chosen;
+    state.history.push(chosen);
+
+    // Step B: every remaining queued number moves one step closer.
+    state.queue.forEach(function (delay, n) {
+      if (delay > 0) state.queue.set(n, delay - 1);
+    });
+
+    if (state.called.size >= TOTAL) {
+      setAuto(false);
+      toast("Board complete — all 90 numbers called!");
+    }
+    speakNumber(chosen);
+    render();
+    return chosen;
+  }
+
+  function setAuto(on) {
+    state.auto = on;
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    if (on) state.timer = setInterval(generate, state.speed * 1000);
+    els.autoPill.classList.toggle("active", on);
+    if (on) toast("Auto mode: every " + state.speed + "s");
+  }
+
+  function setSpeed(seconds) {
+    state.speed = seconds;
+    els.speedLabel.textContent = "Speed " + seconds + "s";
+    if (state.auto) setAuto(true);
+    render();
+  }
+
+  /* -------------------------------------------------------------------- TTS */
+  function speechSupported() {
+    return typeof window.speechSynthesis !== "undefined" && typeof window.SpeechSynthesisUtterance !== "undefined";
+  }
+
+  function speakNumber(n) {
+    if (state.muted || !speechSupported()) return;
+    try {
+      var utter = new SpeechSynthesisUtterance(state.language.word + " " + n);
+      utter.lang = state.language.lang;
+      utter.rate = 0.85;
+      window.speechSynthesis.speak(utter);
+    } catch (e) { /* silent */ }
+  }
+
+  /* ----------------------------------------------------------------- render */
+  function render() {
+    var complete = state.called.size >= TOTAL;
+
+    for (var i = 0; i < tiles.length; i++) {
+      var tile = tiles[i];
+      var n = i + 1;
+      var s = stateOf(n);
+      var cls = "tile" + (s === "uncalled" ? "" : " " + s);
+      if (tile.className !== cls) tile.className = cls;
+
+      // Private hook class: only a mouse hover can see it (see .tile.q in CSS).
+      tile.classList.toggle("q", isQueued(n) && s === "uncalled");
+
+      var badge = tile.querySelector(".badge");
+      var badgeText = "";
+      if (s === "queued") badgeText = state.queue.get(n) <= 1 ? "IN 1" : "IN " + state.queue.get(n);
+      else if (s === "ready") badgeText = "NEXT";
+
+      if (badgeText) {
+        if (!badge) {
+          badge = document.createElement("span");
+          tile.appendChild(badge);
+        }
+        badge.className = "badge" + (s === "ready" ? " ready" : "");
+        if (badge.textContent !== badgeText) badge.textContent = badgeText;
+      } else if (badge) {
+        badge.remove();
+      }
+      tile.setAttribute("aria-label", "Number " + n + ", " + s);
+    }
+
+    els.currentValue.textContent = state.current === null ? "--" : String(state.current);
+    els.currentSub.textContent = state.called.size + " called • " + (TOTAL - state.called.size) + " left";
+
+    els.generateBtn.disabled = complete;
+    els.generateBtn.textContent = complete ? "Board Full" : "Generate";
+    layoutCurrent();
+  }
+
+  function layoutCurrent() {
+    var wrap = els.current.parentElement;
+    var d = Math.max(60, Math.min(wrap.clientWidth, wrap.clientHeight) - 4);
+    els.current.style.width = d + "px";
+    els.current.style.height = d + "px";
+    els.currentValue.style.fontSize = Math.round(d * 0.42) + "px";
+  }
+
+  /* ---------------------------------------------------------------- popups */
+  function menu(label, options, currentIndex, onPick) {
+    els.menu.innerHTML = "";
+    options.forEach(function (option, index) {
+      var button = document.createElement("button");
+      button.type = "button";
+      if (index === currentIndex) button.className = "sel";
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      button.appendChild(dot);
+      button.appendChild(document.createTextNode(option));
+      button.addEventListener("click", function () {
+        closeMenu();
+        onPick(index);
+      });
+      els.menu.appendChild(button);
+    });
+    els.menu.classList.add("show");
+    layoutMenu(label);
+  }
+
+  function layoutMenu(anchor) {
+    var rect = anchor.getBoundingClientRect();
+    var menuRect = els.menu.getBoundingClientRect();
+    var left = Math.min(rect.left, window.innerWidth - menuRect.width - 8);
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - menuRect.height - 6);
+    els.menu.style.left = left + "px";
+    els.menu.style.top = top + "px";
+  }
+
+  function closeMenu() { els.menu.classList.remove("show"); }
+
+  function toast(message) {
+    els.toast.textContent = message;
+    els.toast.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () { els.toast.classList.remove("show"); }, 2000);
+  }
+
+  function showHistory() {
+    var text = state.history.length ? state.history.join(" -> ") : "No numbers called yet. Tap a tile to queue it, then press Generate.";
+    els.historyBody.textContent = text;
+    els.historyCount.textContent = state.called.size + " / 90";
+    els.historyBackdrop.classList.add("show");
+  }
+
+  function share() {
+    var text = "Tambola / Housie — called numbers (" + state.called.size + "/90)\n" + state.history.join(" -> ");
+    if (state.history.length === 0) { toast("Nothing to share yet — call a few numbers first."); return; }
+    if (navigator.share) {
+      navigator.share({ title: "Tambola board history", text: text }).catch(function () {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () { toast("History copied to clipboard."); }, function () { toast(text.slice(0, 60) + "…"); });
+    } else {
+      toast("Sharing is not available in this preview.");
+    }
+  }
+
+  /* ------------------------------------------------------------------ events */
+  els.generateBtn.addEventListener("click", function () { generate(); });
+  els.historyBtn.addEventListener("click", showHistory);
+  els.historyClose.addEventListener("click", function () { els.historyBackdrop.classList.remove("show"); });
+  els.historyShare.addEventListener("click", share);
+  els.shareBtn.addEventListener("click", share);
+
+  els.muteSwitch.addEventListener("click", function () {
+    state.muted = !state.muted;
+    els.muteSwitch.classList.toggle("off", state.muted);
+    if (state.muted && speechSupported()) window.speechSynthesis.cancel();
+    if (!state.muted && state.current !== null) speakNumber(state.current);
+    render();
+  });
+
+  els.autoPill.addEventListener("click", function () { setAuto(!state.auto); });
+
+  els.speedPill.addEventListener("click", function () {
+    menu(els.speedPill, SPEEDS.map(function (s) { return s + "s"; }), SPEEDS.indexOf(state.speed), function (index) {
+      setSpeed(SPEEDS[index]);
+    });
+  });
+
+  els.voicePill.addEventListener("click", function () {
+    var index = LANGUAGES.indexOf(state.language);
+    menu(els.voicePill, LANGUAGES.map(function (l) { return l.label; }), index, function (picked) {
+      state.language = LANGUAGES[picked];
+      els.voiceLabel.textContent = "Voice " + state.language.label;
+      toast("Announcer: " + state.language.label);
+    });
+  });
+
+  els.current.addEventListener("click", function () {
+    if (state.current !== null) speakNumber(state.current);
+  });
+
+  els.resetBtn.addEventListener("click", function () {
+    els.resetBody.textContent = "This clears " + state.called.size + " called number" + (state.called.size === 1 ? "" : "s") +
+      (state.queue.size ? " and " + state.queue.size + " queued number" + (state.queue.size === 1 ? "" : "s") : "") +
+      ", the history and the current call.";
+    els.resetBackdrop.classList.add("show");
+  });
+  els.resetCancel.addEventListener("click", function () { els.resetBackdrop.classList.remove("show"); });
+  els.resetConfirm.addEventListener("click", function () {
+    setAuto(false);
+    state.called.clear();
+    state.history.length = 0;
+    state.queue.clear();
+    state.current = null;
+    if (speechSupported()) window.speechSynthesis.cancel();
+    els.resetBackdrop.classList.remove("show");
+    render();
+    toast("Board reset — ready for a new game.");
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (target && target.closest && target.closest("#menu, #voicePill, #speedPill")) return;
+    closeMenu();
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.target && /INPUT|TEXTAREA/.test(event.target.tagName)) return;
+    var key = event.key.toLowerCase();
+    if (event.code === "Space" || key === "enter") { event.preventDefault(); generate(); }
+    else if (key === "a") setAuto(!state.auto);
+    else if (key === "r") els.resetBtn.click();
+    else if (key === "h") showHistory();
+    else if (key === "q") {
+      // Development aid only: compare discreet vs revealed queue markers.
+      state.showQueueHints = !state.showQueueHints;
+      render();
+      toast("Queue markers " + (state.showQueueHints ? "REVEALED (dev view)" : "hidden - discreet mode"));
+    }
+    else if (key === "escape") {
+      els.historyBackdrop.classList.remove("show");
+      els.resetBackdrop.classList.remove("show");
+      closeMenu();
+    }
+  });
+
+  window.addEventListener("resize", function () { closeMenu(); layoutCurrent(); });
+
+  /* -------------------------------------------------------------- FPS meter */
+  var frames = 0, lastTime = performance.now(), fpsVisible = true;
+  (function tick(now) {
+    frames++;
+    if (now - lastTime >= 500) {
+      var fps = Math.round((frames * 1000) / (now - lastTime));
+      els.fpsValue.textContent = String(fps);
+      frames = 0;
+      lastTime = now;
+    }
+    requestAnimationFrame(tick);
+  })(lastTime);
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key.toLowerCase() === "f") {
+      fpsVisible = !fpsVisible;
+      document.querySelector(".fps").style.display = fpsVisible ? "" : "none";
+    }
+  });
+
+  /* ------------------------------------------------------------------- boot */
+  buildBoard();
+  els.voiceLabel.textContent = "Voice " + state.language.label;
+  render();
+  window.addEventListener("load", function () { setTimeout(layoutCurrent, 60); });
+})();
+</script>
+</body>
+</html>
